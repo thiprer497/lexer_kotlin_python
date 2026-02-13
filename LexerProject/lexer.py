@@ -1,44 +1,56 @@
-
 from .tokens import Token
-from .constantes import OPERADORES, SIMBOLOS, HARD_KEYWORDS, SOFT_KEYWORDS, MODIFIER_KEYWORDS, KEYWORDS
+from .constantes import OPERADORES, SIMBOLOS, KEYWORDS
 from .utils import eh_hex, eh_bin, eh_sufixo_inteiro, eh_sufixo_float, eh_separador
-from .erros import UnclosedComment, UnclosedString, InvalidCharLiteral
 
-class Lexer: #objeto que vai ler o código e guardar a posicao onde ele está lendo o codigo-fonte
+class Lexer:
     def __init__(self, source):
-        self.source = source #codigo fonte
-        #!!porque tem pos, linha e coluna??
-        self.pos = 0 #posicao da leitura no texto/codigo-fonte 
+        self.source = source
+        self.pos = 0
         self.linha = 1
         self.coluna = 1
+        self.erros = [] 
 
-    def ch_atual(self): #funcao para saber em qual caractere o lexer está
-        if self.pos < len(self.source): #se ainda nao chegou ao final do codigo-fonte, retorne o caractere na posicao de leitura atual
-            return self.source[self.pos] #retorna o caractere na posicao de leitura atual do lexer
-        return '\0' #fim do codigo-fonte
+    # ==================================================
+    # AUXILIARES BÁSICOS
+    # ==================================================
+    def ch_atual(self):
+        if self.pos < len(self.source):
+            return self.source[self.pos]
+        return '\0'
+
+    def ch_proximo(self):
+        if self.pos + 1 < len(self.source):
+            return self.source[self.pos + 1]
+        return '\0'
     
-    def avancar(self): #funcao para avancar a leitura do caracteres -> um por vez
+    def ch_proximo_n(self, n=1):
+        if self.pos + n < len(self.source):
+            return self.source[self.pos + n]
+        return '\0'
+
+    def avancar(self):
         ch = self.ch_atual()
         self.pos += 1
-        if ch == '\n': #indicador no codigo fonte .kts que a linha acabou
+        if ch == '\n':
             self.linha += 1
             self.coluna = 1
         else:
             self.coluna += 1
         return ch
-    
-    def pular_linha(self):
-        while self.ch_atual() != '\n' and self.ch_atual() != '\0':
-            self.avancar()
-        if self.ch_atual() == '\n':
-            self.avancar()
 
-    def ch_proximo(self): #olha para o proximo caractere no codigo-fonte
-        if self.pos + 1 < len(self.source):
-            return self.source[self.pos + 1]
-        return '\0'
+    # ==================================================
+    # MODO PÂNICO
+    # ==================================================
+    def erro_lexico(self, mensagem):
+        erro = f"Erro léxico na linha {self.linha}, coluna {self.coluna}: {mensagem}"
+        print(erro)
+        self.erros.append(erro)
+        self.avancar()
+        return None
 
-    #funcoes para ignorar inutilidades pro lexer(espaco, comentarios, tabs, \n)
+    # ==================================================
+    # IGNORAR ESPAÇOS E COMENTÁRIOS
+    # ==================================================
     def pular_espaco(self):
         while self.ch_atual() in [' ', '\t', '\r', '\n']:
             self.avancar()
@@ -49,399 +61,322 @@ class Lexer: #objeto que vai ler o código e guardar a posicao onde ele está le
 
     def pular_comentario_blocos(self):
         profundidade = 1
-        self.avancar()
-        self.avancar()
+        self.avancar(); self.avancar() # /*
         while profundidade > 0:
             if self.ch_atual() == '\0':
-                raise Exception("erro lexico: comentario nao fechado!")
+                return self.erro_lexico("Comentário de bloco não fechado")
+            
             if self.ch_atual() == '/' and self.ch_proximo() == '*':
-                profundidade  += 1
-                self.avancar()
-                self.avancar()
+                profundidade += 1
+                self.avancar(); self.avancar()
             elif self.ch_atual() == '*' and self.ch_proximo() == '/':
                 profundidade -= 1
-                self.avancar()
-                self.avancar()
+                self.avancar(); self.avancar()
             else:
                 self.avancar()
 
-    #reconhecimento de identificadores, palavras-chaves, literais etc
-    
-    def eh_hex(self, ch):
-       return ch.isdigit() or ch.lower() in 'abcdef'
-    
-    def eh_bin(self, ch):
-        return ch in '01'
-    
-    def eh_sufixo_inteiro(self, ch):
-        return ch.lower() in ('u', 'l')
-
-    def eh_sufixo_float(self, ch):
-        return ch.lower() == 'f'
-    
-    def eh_separador(self, ch):
-        return ch == '_' #retorna true se caractere == '_'
-    
-    #reconhece literais numericos int, float, hex, bin
+    # ==================================================
+    # LITERAIS NUMÉRICOS
+    # ==================================================
     def reconhece_literais_numericos(self):
         inicio = self.pos
-        linha = self.linha
-        coluna = self.coluna
+        linha, coluna = self.linha, self.coluna
         tipo = "INT_LITERAL"
-        tem_ponto = False
-        tem_expoente = False
-
-        #reconhece binario
-        if self.ch_atual() == '0' and self.ch_proximo().lower() == 'b':
-            self.avancar()
-            self.avancar()
-            encontrou_digito = False # garantir pelo menos um digito binario
-
-            while self.eh_bin(self.ch_atual()) or self.eh_separador(self.ch_atual()):
-                if self.eh_bin(self.ch_atual()):
-                    encontrou_digito = True
-                self.avancar()
-            if not encontrou_digito:
-                raise Exception(f"erro lexico: literal binario sem digitos na linha {linha}, coluna {coluna}")
+        base = 10 
         
-        #reconhece hexadecimal
-        elif self.ch_atual() == '0' and self.ch_proximo().lower() == 'x':
-            self.avancar()
-            self.avancar() #duas chamadas para avançar 0x
-            # deve ter ao menos um dígito hex
-            encontrou_digito = False
-            while self.eh_hex(self.ch_atual()) or self.eh_separador(self.ch_atual()):
-                if self.eh_hex(self.ch_atual()):
-                    encontrou_digito = True
-                self.avancar()
-            if not encontrou_digito:
-                raise Exception(f"erro lexico: literal hexadecimal sem digitos na linha {linha}, coluna {coluna}")
+        # Hexadecimal (0x) ou Binário (0b)
+        if self.ch_atual() == '0':
+            if self.ch_proximo().lower() == 'x':
+                base = 16
+                self.avancar(); self.avancar()
+                while self.eh_hex(self.ch_atual()) or self.eh_separador(self.ch_atual()):
+                    self.avancar()
+            elif self.ch_proximo().lower() == 'b':
+                base = 2
+                self.avancar(); self.avancar()
+                while self.eh_bin(self.ch_atual()) or self.eh_separador(self.ch_atual()):
+                    self.avancar()
 
-        #reconhece decimal e float
-
-        else:
-            #reconhece parte inteira do numero
+        # Decimal ou Float
+        if base == 10:
             while self.ch_atual().isdigit() or self.eh_separador(self.ch_atual()):
                 self.avancar()
             
-            if self.ch_atual() == '.' and self.ch_proximo() != '.':
-                tem_ponto = True
+            if self.ch_atual() == '.' and self.ch_proximo() != '.': 
+                tipo = "FLOAT_LITERAL"
                 self.avancar()
                 while self.ch_atual().isdigit() or self.eh_separador(self.ch_atual()):
                     self.avancar()
-
-            #reconhece o expoente
+            
             if self.ch_atual().lower() == 'e':
-                tem_expoente = True
+                tipo = "FLOAT_LITERAL"
                 self.avancar()
-                if self.ch_atual() in ['+', '-']:
+                if self.ch_atual() in ['+', '-']: 
                     self.avancar()
                 while self.ch_atual().isdigit() or self.eh_separador(self.ch_atual()):
                     self.avancar()
 
-        #reconhece sufixos inteiros u/U e L/l(em qualquer ordem)
-        while self.ch_atual().lower() in ['u', 'l']:
+        # Consome sufixos (L, u, f) do código fonte
+        while self.ch_atual().lower() in ['u', 'l', 'f']:
+            if self.ch_atual().lower() == 'f':
+                tipo = "FLOAT_LITERAL"
             self.avancar()
 
-        #reconhece sufixos float
-        if self.ch_atual().lower() == 'f':
-            tipo = "FLOAT_LITERAL"
-            self.avancar()
-        #reconhece se tem ponto ou expoente -> float
-        if tem_ponto or tem_expoente:
-            tipo = "FLOAT_LITERAL"
         lexema = self.source[inicio:self.pos]
-        return Token(tipo, lexema, linha, coluna)
-    
-                    
-                                                            
+        
+        # --- CÁLCULO DO VALOR ---
+        valor_limpo = lexema.replace('_', '').lower()
+        
+        # CORREÇÃO: Se for HEX, 'f' é dígito, não sufixo float.
+        # Apenas removemos sufixos se eles não fizerem parte da base numérica
+        sufixos_validos = ['u', 'l']
+        if base == 10: # Apenas decimal aceita 'f' como sufixo float
+            sufixos_validos.append('f')
 
+        # Remove sufixos do final da string para conversão
+        while valor_limpo and valor_limpo[-1] in sufixos_validos:
+            # Cuidado extra: no caso hex (0xFF), o último F é digito, não sufixo.
+            # Kotlin usa 'L' ou 'u' para Hex. Não existe 'f' para Hex literal (float hex usa 'p')
+            # Então se base=16, só removemos se for u ou l.
+            if base == 16 and valor_limpo[-1] == 'f':
+                break 
+            valor_limpo = valor_limpo[:-1]
+        
+        valor = None
+        try:
+            if tipo == "INT_LITERAL":
+                valor = int(valor_limpo, base)
+            else:
+                valor = float(valor_limpo)
+        except:
+            valor = None 
 
+        return Token(tipo, lexema, valor, linha, coluna)
 
-
-    #reconhecimento dos identificadores
+    # ==================================================
+    # IDENTIFICADORES
+    # ==================================================
     def reconhece_identificadores(self):
         inicio = self.pos
-        linha = self.linha
-        coluna = self.coluna
-        #isalnum retorna true se os caracteres ou caractere na string sao numeros ou letras
+        linha, coluna = self.linha, self.coluna
         while self.ch_atual().isalnum() or self.ch_atual() == '_':  
             self.avancar()
         lexema = self.source[inicio:self.pos]
-         # lookup direto no mapa KEYWORDS -> token type específico
+        
         tipo = KEYWORDS.get(lexema)
+        valor = None
+        if tipo == "KW_TRUE": valor = True
+        elif tipo == "KW_FALSE": valor = False
+        elif tipo == "KW_NULL": valor = None
+        
         if tipo is not None:
-            return Token(tipo, lexema, linha, coluna)
-        # caso não seja keyword
-        return Token("IDENTIFIER", lexema, linha, coluna)
-    
+            return Token(tipo, lexema, valor, linha, coluna)
+        return Token("IDENTIFIER", lexema, None, linha, coluna)
+
     def reconhece_identificador_crase(self):
-        linha = self.linha
-        coluna = self.coluna
+        linha, coluna = self.linha, self.coluna
         self.avancar()
         inicio = self.pos
         while self.ch_atual() != '`' and self.ch_atual() != '\0':
             self.avancar()
+        
         if self.ch_atual() != '`':
-            raise Exception(f"Identificador com crase nao fechado na linha: {linha}, coluna: {coluna}")
-        lexema = self.source[inicio:self.pos]
+            return self.erro_lexico("Identificador com crase não fechado")
+            
+        lexema_interno = self.source[inicio:self.pos]
         self.avancar()
-        return Token("Quoted_identifier",lexema, linha,coluna)
+        return Token("Quoted_identifier", lexema_interno, None, linha, coluna)
 
-    #reconhecendo numeros
-    #inutilizado!!!!!!!!!!!!!!!!!!!!!!!!!
-    def reconhece_numeros(self):
-        inicio = self.pos
-        linha = self.linha 
-        coluna = self.coluna
-        while self.ch_atual().isdigit(): #enquanto o caractere sendo lido pelo lexer for um digito
-            self.avancar()
-        lexema = self.source[inicio:self.pos]
-        return Token("INT_LITERAL", lexema,linha,coluna)
+    # ==================================================
+    # STRINGS E CHARS (COM SUPORTE A UNICODE)
+    # ==================================================
+    def processar_escape(self):
+        self.avancar() # consome \
+        char = self.ch_atual()
+        
+        # CORREÇÃO: Suporte a Unicode \uXXXX
+        if char == 'u':
+            self.avancar() # consome u
+            hex_val = ""
+            # Tenta ler 4 digitos hexadecimais
+            for _ in range(4):
+                if self.eh_hex(self.ch_atual()):
+                    hex_val += self.avancar()
+                else:
+                    # Se falhar no meio (ex: \u00X), retorna o que leu pra não travar,
+                    # mas vai dar erro de char inválido depois.
+                    return '?' 
+            try:
+                return chr(int(hex_val, 16))
+            except:
+                return '?'
 
-    '''
-Testa 3 caracteres (===, ..<)
-Depois 2 (==, !=, ?.)
-Depois 1 (!, <, >)
-    '''
-    def reconhece_operadores(self):
-        linha = self.linha
-        coluna = self.coluna
-        #tenta casar do maior para o menor
-        for tamanho in (3,2,1):
-            lexema = self.source[self.pos:self.pos + tamanho]
-            if lexema in OPERADORES:
-                for _ in range(tamanho):
-                    self.avancar()
-                return Token(OPERADORES[lexema], lexema, linha, coluna)
-        return None
-    
-    #inutilizada!!  !is, !in, as? são tokens normais do mapa e sao reconhecidos em reconhece_identificadores()
-    #importante para diferenciar !is e nao reconhecer '!' como operador
-    def reconhece_hard_keyword_composta(self): #reconhecer keywords compostas como !is como hard_keyword"
-        linha = self.linha
-        coluna = self.coluna
+        escapes = {'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', '"': '"', "'": "'", '\\': '\\', '$': '$'}
+        self.avancar()
+        return escapes.get(char, char)
 
-        for kw in ("as?", "!in", "!is"):
-            if self.source.startswith(kw, self.pos):
-                for _ in range(len(kw)):
-                    self.avancar()
-                return Token("HARD_KEYWORD", kw, linha, coluna)
-
-        return None
-    
-    #reconhece literais de caractere 'a'
     def reconhece_char_literal(self):
-        linha = self.linha
-        coluna = self.coluna
-        self.avancar()  # '
-        if self.ch_atual() == '\0' or self.ch_atual() == '\n':
-            raise Exception("erro lexico: literal de caractere invalido")
+        linha, coluna = self.linha, self.coluna
+        self.avancar() # '
+        
+        if self.ch_atual() == '\\':
+            valor_char = self.processar_escape()
+        else:
+            valor_char = self.ch_atual()
+            self.avancar()
+            
+        if self.ch_atual() != "'":
+             return self.erro_lexico("Literal de caractere inválido ou não fechado")
+        
+        self.avancar() # fecha '
+        return Token("CHAR_LITERAL", f"'{valor_char}'", valor_char, linha, coluna)
 
-        if self.ch_atual() == '\\':  # escape
-          self.avancar()
-          if self.ch_atual() == '\0':
-            raise Exception("erro lexico: escape invalido em char")
-          self.avancar()
+    def reconhece_string(self):
+        linha, coluna = self.linha, self.coluna
+        is_triple = False
+        
+        if self.ch_atual() == '"' and self.ch_proximo() == '"' and self.ch_proximo_n(2) == '"':
+            is_triple = True
+            self.avancar(); self.avancar(); self.avancar()
         else:
             self.avancar()
 
-        if self.ch_atual() != "'": #erro aqui ao reconhecer 'a'
-            raise Exception(
-            f"erro lexico: literal de caractere invalido na linha {linha}, coluna {coluna}")
-            
-
-        self.avancar()  # fecha aspas simples
-        lexema = self.source[self.pos - 3:self.pos]
-        return Token("CHAR_LITERAL", lexema, linha, coluna)
-    
-    #reconhece strings simples "string"
-    def reconhece_string_interpolada(self):
         tokens = []
-        linha = self.linha
-        coluna = self.coluna
-
-        tokens.append(Token("STRING_START", '"', linha, coluna))
-        self.avancar()  # consome "
+        tokens.append(Token("STRING_START", '"""' if is_triple else '"', None, linha, coluna))
 
         buffer = ""
-        buffer_linha = self.linha
-        buffer_coluna = self.coluna
-
         while True:
             ch = self.ch_atual()
-
+            
             if ch == '\0':
-                raise Exception("erro lexico: string nao fechada")
+                return self.erro_lexico("String não fechada (EOF)")
 
-            # fim da string
-            if ch == '"':
-                if buffer:
-                    tokens.append(Token("STRING_TEXT", buffer, buffer_linha, buffer_coluna))
-                tokens.append(Token("STRING_END", '"', self.linha, self.coluna))
-                self.avancar()
-                break
+            if is_triple:
+                if ch == '"' and self.ch_proximo() == '"' and self.ch_proximo_n(2) == '"':
+                    if buffer: tokens.append(Token("STRING_TEXT", buffer, buffer, linha, coluna))
+                    tokens.append(Token("STRING_END", '"""', None, self.linha, self.coluna))
+                    self.avancar(); self.avancar(); self.avancar()
+                    break
+            else:
+                if ch == '"':
+                    if buffer: tokens.append(Token("STRING_TEXT", buffer, buffer, linha, coluna))
+                    tokens.append(Token("STRING_END", '"', None, self.linha, self.coluna))
+                    self.avancar()
+                    break
+                if ch == '\n':
+                     return self.erro_lexico("Quebra de linha em string simples")
 
-            # interpolação
             if ch == '$':
                 if buffer:
-                 tokens.append(Token("STRING_TEXT", buffer, buffer_linha, buffer_coluna))
-                 buffer = ""
-
-                self.avancar()  # consome $
-
-                # ${expressao}
+                    tokens.append(Token("STRING_TEXT", buffer, buffer, linha, coluna))
+                    buffer = ""
+                
+                self.avancar()
                 if self.ch_atual() == '{':
-                    tokens.append(Token("STRING_INTERP_START", "${", self.linha, self.coluna))
-                    self.avancar()  # consome {
-
-                    expr_inicio_linha = self.linha
-                    expr_inicio_coluna = self.coluna
-                    conteudo = ""
-
+                    tokens.append(Token("STRING_INTERP_START", "${", None, self.linha, self.coluna))
+                    self.avancar()
+                    expr_str = ""
                     while self.ch_atual() != '}' and self.ch_atual() != '\0':
-                      conteudo += self.ch_atual()
-                      self.avancar()
-
-                    if self.ch_atual() != '}':
-                     raise Exception("erro lexico: interpolacao nao fechada")
-
-                    tokens.append(Token(
-                     "STRING_INTERP_EXPR",
-                     conteudo,
-                     expr_inicio_linha,
-                     expr_inicio_coluna
-                    ))
-                    tokens.append(Token("STRING_INTERP_END", "}", self.linha, self.coluna))
-                    self.avancar()  # consome }
-
-                    buffer_linha = self.linha
-                    buffer_coluna = self.coluna
-                    continue
-
-                # $ident
+                         expr_str += self.avancar()
+                    tokens.append(Token("STRING_INTERP_EXPR", expr_str, None, self.linha, self.coluna))
+                    tokens.append(Token("STRING_INTERP_END", "}", None, self.linha, self.coluna))
+                    self.avancar()
                 else:
-                    inicio = self.pos
+                    inicio_id = self.pos
                     while self.ch_atual().isalnum() or self.ch_atual() == '_':
                         self.avancar()
-
-                    if self.pos == inicio:
-                        raise Exception(
-                            f"erro lexico: interpolacao invalida na linha {self.linha}, coluna {self.coluna}"
-                        )
-
-                    ident = self.source[inicio:self.pos]
-                    tokens.append(Token("STRING_INTERP_ID", ident, self.linha, self.coluna))
-                    buffer = ""
-                    buffer_linha = self.linha
-                    buffer_coluna = self.coluna
-                    continue
-
-
-            # escape
-            if ch == '\\':
-                buffer += ch
-                self.avancar()
-                buffer += self.ch_atual()
-                self.avancar()
+                    nome_id = self.source[inicio_id:self.pos]
+                    tokens.append(Token("STRING_INTERP_ID", nome_id, None, self.linha, self.coluna))
                 continue
 
-            # caractere normal
-            buffer += ch
-            self.avancar()
-
+            if ch == '\\' and not is_triple:
+                buffer += self.processar_escape()
+            else:
+                buffer += ch
+                self.avancar()
+        
         return tokens
 
+    # ==================================================
+    # OPERADORES
+    # ==================================================
+    def reconhece_operadores(self):
+        linha, coluna = self.linha, self.coluna
+        for tamanho in (3, 2, 1):
+            if self.pos + tamanho <= len(self.source):
+                lexema = self.source[self.pos : self.pos + tamanho]
+                if lexema in OPERADORES:
+                    for _ in range(tamanho): self.avancar()
+                    return Token(OPERADORES[lexema], lexema, None, linha, coluna)
+        return None
 
-
-
-
-
-    '''
-ordem de chamada:
-1. ignorar lixo
-2. EOF
-3. comentários
-4. identificadores / keywords simples
-5. números
-6. identificadores com crase
-7. HARD KEYWORDS COMPOSTAS  
-8. operadores (maximal munch)
-9. símbolos simples
-10. erro
-'''   
-
+    # ==================================================
+    # LOOP PRINCIPAL
+    # ==================================================
     def proximo_token(self):
-        # REGRA ESPECIAL: Shebang (somente no início do arquivo)
         if self.pos == 0 and self.ch_atual() == '#' and self.ch_proximo() == '!':
-            self.pular_linha() #?
+            self.pular_linha()
             return self.proximo_token()
         
-        #decide quais caracteres sao irrelevantes e garante o salto de linha ao ler '\n'
         self.pular_espaco()
 
-        #reconhece fim de codigo
         if self.ch_atual() == '\0':
-            return Token("EOF", "", self.linha, self.coluna)
-        
-        #pula comentarios
+            return Token("EOF", "", None, self.linha, self.coluna)
+
         if self.ch_atual() == '/' and self.ch_proximo() == '/':
             self.pular_comentario_linha()
             return self.proximo_token()
-
         if self.ch_atual() == '/' and self.ch_proximo() == '*':
-            self.pular_comentario_blocos()
+            erro = self.pular_comentario_blocos()
+            if erro: return None 
             return self.proximo_token()
 
-        #reconhece identificadores
-        #isalpha retorna True apenas se a string contiver exclusivamente letras (A-Z, a-z ou unicode)
         if self.ch_atual().isalpha() or self.ch_atual() == '_':
             return self.reconhece_identificadores()
         
-        #reconhece literais numericos
         if self.ch_atual().isdigit():
             return self.reconhece_literais_numericos()
-            
-        #reconhece strings 
+        
         if self.ch_atual() == '"':
-            return self.reconhece_string_interpolada()
+            return self.reconhece_string()
 
         if self.ch_atual() == "'":
             return self.reconhece_char_literal()
         
-        #reconhece identificador com crase
         if self.ch_atual() == '`':
             return self.reconhece_identificador_crase()
-        
 
-        #reconhece operadores
-        op = self.reconhece_operadores()
-        if op:
-            return op
+        token_op = self.reconhece_operadores()
+        if token_op: return token_op
         
-        #reconhece simbolos
         if self.ch_atual() in SIMBOLOS:
             ch = self.avancar()
-            return Token(SIMBOLOS[ch], ch, self.linha, self.coluna - 1)
-        raise Exception( f"erro lexico: caractere '{self.ch_atual()}' "
-                        f"erro na linha {self.linha}, e coluna {self.coluna}" )
-          
+            return Token(SIMBOLOS[ch], ch, None, self.linha, self.coluna - 1)
+        
+        return self.erro_lexico(f"Caractere inesperado '{self.ch_atual()}'")
 
     def tokenize(self):
         tokens = []
         while True:
-            token = self.proximo_token()
+            try:
+                result = self.proximo_token()
+                if result is None: 
+                    continue 
+                
+                if isinstance(result, list):
+                    tokens.extend(result)
+                    last_token = result[-1]
+                else:
+                    tokens.append(result)
+                    last_token = result
 
-            if isinstance(token, list):
-                tokens.extend(token)
-                last = token[-1]
-            else:
-                tokens.append(token)
-                last = token
-
-            if last.tipo == "EOF":
-             break
-
+                if last_token.tipo == "EOF":
+                    break
+            except Exception as e:
+                print(f"Erro fatal não tratado: {e}")
+                break
         return tokens
 
-
+    def eh_hex(self, ch): return eh_hex(ch)
+    def eh_bin(self, ch): return eh_bin(ch)
+    def eh_separador(self, ch): return eh_separador(ch)

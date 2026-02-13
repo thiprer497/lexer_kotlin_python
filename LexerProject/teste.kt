@@ -8,6 +8,10 @@ package teste.lexer
 
 import kotlin.math.*
 
+var (a, b, c, d) = listOf(1, 1, 1, 1)
+var cc: Int
+var dd: 99
+
 public final class ExemploLexerTest {
 
     companion object {
@@ -67,4 +71,22 @@ public final class ExemploLexerTest {
         val tamanho = nome?.length ?: -1
         val naoNulo = nome!!.length
     }
+}
+
+fun main() {
+    // TESTE NOVO: Char e Escapes
+    val c1 = 'a'
+    val c2 = '\n'      // Quebra de linha real
+    val c3 = '\''      // Aspas simples escapada
+    val c4 = '\u0041'  // Unicode (A) (Nosso lexer le char a char, pode separar o u, mas ok por enquanto)
+
+    // TESTE NOVO: Aspas Triplas (Raw String)
+    val sql = """
+        SELECT * FROM usuarios
+        WHERE id = 1
+    """
+    
+    // TESTE NOVO: Valores Numéricos
+    val x = 0xFF  // Lexer deve mostrar valor=255
+    val y = 0b10  // Lexer deve mostrar valor=2
 }
