@@ -88,6 +88,11 @@ docker build -t kotlin-lexer .
 ### 3. Executar o Container
 Para analisar arquivos, você precisa "espelhar" (mount) a sua pasta atual para dentro do Docker.
 
+*   **Usar arquivos locais:**
+    ```bash
+    docker run --rm kotlin-lexer exemplos/teste.kt exemplos/complexo.kt exemplos/erros.kt exemplos/estruturas.kt
+    ```
+
 *   **Linux / Mac / PowerShell:**
     ```bash
     docker run --rm -v "$(pwd):/app" kotlin-lexer exemplos/exemplo.kt
