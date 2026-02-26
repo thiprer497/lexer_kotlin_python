@@ -1,4 +1,4 @@
-# Analisador Léxico - Kotlin
+# Analisador Léxico e sintático - Kotlin
 
 **Trabalho:** Projeto e desenvolvimento de analisadores léxicos e sintáticos para a linguagem de programação Kotlin (Parte 3 e parte 4)  
 **Disciplina:** Compiladores  
