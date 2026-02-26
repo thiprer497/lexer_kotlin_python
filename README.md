@@ -24,9 +24,9 @@
     ```
 
 2.  **Acesse a pasta raiz:**
-    É fundamental estar na pasta raiz do projeto (`lexer_kotlin_python`) e **não** dentro da pasta do pacote (`LexerProject`).
+    É fundamental estar na pasta raiz do projeto (`lexer-and-parser-for-kotlin-language`) e **não** dentro da pasta do pacote (`LexerProject`).
     ```bash
-    cd lexer_kotlin_python
+    cd lexer-and-parser-for-kotlin-language
     ```
 
 3.  **Execute o analisador:**
